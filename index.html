@@ -105,6 +105,29 @@
 <div id="scale-note" class="hud">两套缩放体系 — 距离：行星轨道 a^0.55 · 卫星 (d/Rp)^0.5×0.5 · 地月放大约31倍<br>尺寸：√(R/R⊕)×0.55（次序保持，太阳另行压缩） · 轨道形状/倾角/周期/实时位置真实<br>纹理：Solar System Scope (CC BY 4.0) · NASA/CICLOPS 卫星映射图</div>
 
 <script>
+// 全局错误显示条：手机上排查方便（任何未捕获 JS 错误直接显示在页面上）
+(function () {
+  function show(text) {
+    var d = document.getElementById('errbox');
+    if (!d) {
+      d = document.createElement('div');
+      d.id = 'errbox';
+      d.style.cssText = 'position:fixed;z-index:98;left:10px;top:44px;right:10px;color:#ffd7d7;' +
+        'background:rgba(70,12,12,.92);font:12px/1.5 monospace;padding:8px 10px;' +
+        'border-radius:8px;white-space:pre-wrap;max-height:36%;overflow:auto;';
+      document.body.appendChild(d);
+    }
+    d.textContent += text + '\n';
+  }
+  window.addEventListener('error', function (e) {
+    show('JS错误: ' + e.message + ' @' + String(e.filename || '').slice(-30) + ':' + e.lineno);
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    show('Promise错误: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+})();
+</script>
+<script>
 // 触屏设备：操作提示换成触摸语义（场景代码不变，只改提示文案）
 if (window.matchMedia && matchMedia('(pointer: coarse)').matches) {
   var _hint = document.getElementById('hint');
@@ -1231,7 +1254,29 @@ var DATA_ENCELADUS = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAY
   };
 
   // ================= 渲染器 / 场景 / 相机 / 交互 =================
-  var renderer = new THREE.WebGLRenderer({ antialias: true });
+  // WebGL2 优先，失败回退 WebGL1（部分手机内置浏览器 WebGL2 有坑）；
+  // 都失败则显示可读提示（注意：同一 canvas 只能要一种 context，每次尝试用新 canvas）
+  var renderer = null, glError = null;
+  ['webgl2', 'webgl'].forEach(function (t) {
+    if (renderer) return;
+    var c = document.createElement('canvas');
+    var ctx = null;
+    try { ctx = c.getContext(t, { antialias: true }); } catch (e) { /* continue */ }
+    if (!ctx) return;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, canvas: c, context: ctx }); }
+    catch (e) { glError = e; }
+  });
+  if (!renderer) {
+    var msg = '此浏览器不支持 WebGL，无法进行三维渲染。' +
+      (glError ? ('（' + glError.message + '）') : '') +
+      ' 建议改用系统浏览器或 Chrome 打开本页。';
+    var box = document.createElement('div');
+    box.style.cssText = 'position:fixed;z-index:99;left:12px;top:56px;right:12px;color:#ffe6cf;' +
+      'background:rgba(88,34,10,.94);font:13px/1.6 sans-serif;padding:10px 12px;border-radius:10px;';
+    box.textContent = msg;
+    document.body.appendChild(box);
+    throw (glError || new Error('WebGL unavailable'));
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
